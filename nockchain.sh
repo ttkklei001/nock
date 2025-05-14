@@ -73,15 +73,15 @@ function generate_wallet() {
   cd nockchain
 
   # 确保钱包命令可执行
-  if [ ! -f "./target/release/wallet" ]; then
+  if [ ! -f "./target/release/nockchain-wallet" ]; then
     echo -e "${RED}[-] 错误：找不到 wallet 可执行文件，请确保编译已成功并生成 wallet。${RESET}"
     exit 1
   fi
 
   # 执行钱包生成命令
-  ./target/release/wallet keygen
+  ./target/release/nockchain-wallet keygen
 
-  # 检查生成过程是否成功（此时假设 wallet keygen 会生成特定格式的输出）
+  # 检查生成过程是否成功
   if [ $? -eq 0 ]; then
     echo -e "${GREEN}[+] 钱包生成成功！/ Wallet generated successfully.${RESET}"
   else
