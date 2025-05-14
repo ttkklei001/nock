@@ -57,6 +57,7 @@ function setup_all() {
   echo -e "[*] 编译源码 / Building source with ${CORE_COUNT} 核心..."
   cd nockchain
   make install-hoonc
+  make build-hoon-all
   make -j$CORE_COUNT build
   make -j$CORE_COUNT install-nockchain-wallet
   make -j$CORE_COUNT install-nockchain
