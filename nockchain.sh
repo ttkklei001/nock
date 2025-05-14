@@ -23,8 +23,22 @@ function show_banner() {
   echo ""
 }
 
+# ========= 获取核心数量 / Get Core Count =========
+function get_core_count() {
+  # 获取系统中的可用核心数量
+  local max_cores=$(nproc)
+  read -p "请输入你希望使用的核心数量（最大可用核心数为 $max_cores）: " CORE_COUNT
+  if [[ $CORE_COUNT -gt $max_cores || $CORE_COUNT -lt 1 ]]; then
+    echo -e "${RED}[-] 错误：请输入一个有效的核心数量（1 到 $max_cores 之间）。${RESET}"
+    exit 1
+  fi
+}
+
 # ========= 一键安装函数 / Full Installation =========
 function setup_all() {
+  # 获取用户输入的核心数量
+  get_core_count
+
   echo -e "[*] 安装系统依赖 / Installing system dependencies..."
   apt-get update && apt install -y sudo
   sudo apt install -y screen curl git wget make gcc build-essential jq \
@@ -36,24 +50,16 @@ function setup_all() {
   source "$HOME/.cargo/env"
   rustup default stable
 
-  echo -e "[*] 克隆仓库 / Cloning nockchain repository..."
-  if [ -d "nockchain" ]; then
-    read -p "[?] 已存在 nockchain 目录，是否删除并重新克隆？(y/n): " confirm
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-      rm -rf nockchain
-      git clone https://github.com/zorp-corp/nockchain
-    else
-      echo "[*] 使用现有目录 / Using existing directory."
-    fi
-  else
-    git clone https://github.com/zorp-corp/nockchain
-  fi
+  echo -e "[*] 克隆最新 nockchain 仓库 / Cloning latest nockchain repository..."
+  rm -rf nockchain
+  git clone --depth=1 https://github.com/zorp-corp/nockchain
 
-  echo -e "[*] 编译源码 / Building source..."
+  echo -e "[*] 编译源码 / Building source with $CORE_COUNT 核心..."
   cd nockchain
-  make install-choo
-  make build-hoon-all
-  make build
+  make -j$CORE_COUNT install-hoonc
+  make -j$CORE_COUNT build
+  make -j$CORE_COUNT install-nockchain-wallet
+  make -j$CORE_COUNT install-nockchain
 
   echo -e "[*] 配置环境变量 / Setting environment variables..."
   RC_FILE="$HOME/.bashrc"
@@ -72,20 +78,17 @@ function generate_wallet() {
   echo -e "[*] 生成钱包 / Generating wallet..."
   cd nockchain
 
-  # 确保钱包命令可执行
   if [ ! -f "./target/release/nockchain-wallet" ]; then
-    echo -e "${RED}[-] 错误：找不到 wallet 可执行文件，请确保编译已成功并生成 wallet。${RESET}"
+    echo -e "${RED}[-] 错误：找不到 wallet 可执行文件，请确保编译成功。${RESET}"
     exit 1
   fi
 
-  # 执行钱包生成命令
   ./target/release/nockchain-wallet keygen
 
-  # 检查生成过程是否成功
   if [ $? -eq 0 ]; then
     echo -e "${GREEN}[+] 钱包生成成功！/ Wallet generated successfully.${RESET}"
   else
-    echo -e "${RED}[-] 错误：钱包生成失败！/ Wallet generation failed!${RESET}"
+    echo -e "${RED}[-] 钱包生成失败！/ Wallet generation failed!${RESET}"
     exit 1
   fi
 }
@@ -100,47 +103,45 @@ function configure_mining_key() {
 
 # ========= 启动 Leader 节点 / Run Leader Node =========
 function start_leader_node() {
-  echo -e "[*] 启动 Leader 节点（主挖矿）/ Starting leader node..."
+  echo -e "[*] 启动 Leader 节点 / Starting leader node..."
   cd nockchain
   screen -S leader -dm make run-nockchain-leader
-  echo -e "${GREEN}[+] Leader 节点已运行 / Leader node running (screen: leader).${RESET}"
+  echo -e "${GREEN}[+] Leader 节点运行中 / Leader node running (screen: leader).${RESET}"
 }
 
 # ========= 启动 Follower 节点 / Run Follower Node =========
 function start_follower_node() {
-  echo -e "[*] 启动 Follower 节点（观察者）/ Starting follower node..."
+  echo -e "[*] 启动 Follower 节点 / Starting follower node..."
   cd nockchain
   screen -S follower -dm make run-nockchain-follower
-  echo -e "${GREEN}[+] Follower 节点已运行 / Follower node running (screen: follower).${RESET}"
+  echo -e "${GREEN}[+] Follower 节点运行中 / Follower node running (screen: follower).${RESET}"
 }
 
-# ========= 查看 Leader 节点日志 / View Leader Node Logs =========
+# ========= 查看 Leader 节点实时日志 =========
 function view_leader_logs() {
-  echo -e "[*] 查看 Leader 节点日志 / Viewing Leader Node Logs..."
-  screen -r leader -X hardcopy /tmp/leader_log.txt
-  cat /tmp/leader_log.txt
-  echo -e "${YELLOW}[!] 按 Ctrl + A + D 退出 screen 会话 / Press Ctrl + A + D to exit the screen session.${RESET}"
+  echo -e "[*] Leader 节点日志 / Viewing leader logs..."
+  screen -r leader
+  echo -e "${YELLOW}[!] 按 Ctrl+A+D 可退出 screen / Ctrl+A+D to detach.${RESET}"
 }
 
-# ========= 查看 Follower 节点日志 / View Follower Node Logs =========
+# ========= 查看 Follower 节点实时日志 =========
 function view_follower_logs() {
-  echo -e "[*] 查看 Follower 节点日志 / Viewing Follower Node Logs..."
-  screen -r follower -X hardcopy /tmp/follower_log.txt
-  cat /tmp/follower_log.txt
-  echo -e "${YELLOW}[!] 按 Ctrl + A + D 退出 screen 会话 / Press Ctrl + A + D to exit the screen session.${RESET}"
+  echo -e "[*] Follower 节点日志 / Viewing follower logs..."
+  screen -r follower
+  echo -e "${YELLOW}[!] 按 Ctrl+A+D 可退出 screen / Ctrl+A+D to detach.${RESET}"
 }
 
 # ========= 主菜单 / Main Menu =========
 function main_menu() {
   show_banner
   echo "请选择操作 / Please choose an option:"
-  echo "  1) 一键安装并编译 / Install & Build All"
+  echo "  1) 一键安装并构建 / Install & Build"
   echo "  2) 生成钱包 / Generate Wallet"
   echo "  3) 设置挖矿公钥 / Set Mining Public Key"
   echo "  4) 启动 Leader 节点 / Start Leader Node"
   echo "  5) 启动 Follower 节点 / Start Follower Node"
-  echo "  6) 查看 Leader 节点日志 / View Leader Node Logs"
-  echo "  7) 查看 Follower 节点日志 / View Follower Node Logs"
+  echo "  6) 查看 Leader 日志 / View Leader Logs"
+  echo "  7) 查看 Follower 日志 / View Follower Logs"
   echo "  0) 退出 / Exit"
   echo ""
   read -p "请输入编号 / Enter your choice: " choice
