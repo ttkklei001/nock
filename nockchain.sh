@@ -8,6 +8,9 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 
+# ========= 项目路径 / Project Directory =========
+NCK_DIR="$HOME/nockchain"
+
 # ========= 横幅与署名 / Banner & Signature =========
 function show_banner() {
   clear
@@ -46,18 +49,19 @@ function setup_all() {
   rustup default stable
 
   echo -e "[*] 获取最新仓库 / Cloning or updating latest nockchain repository..."
-  if [ -d "nockchain" ]; then
-    cd nockchain && git pull && cd ..
+  if [ -d "$NCK_DIR" ]; then
+    cd "$NCK_DIR" && git pull
   else
-    git clone --depth=1 https://github.com/zorp-corp/nockchain
+    git clone --depth=1 https://github.com/zorp-corp/nockchain "$NCK_DIR"
   fi
+
+  cd "$NCK_DIR" || exit 1
 
   prompt_core_count
 
   echo -e "[*] 编译源码 / Building source with ${CORE_COUNT} 核心..."
-  cd nockchain
   make install-hoonc
-  make build-hoon-all
+  make -j$CORE_COUNT build-hoon-all
   make -j$CORE_COUNT build
   make -j$CORE_COUNT install-nockchain-wallet
   make -j$CORE_COUNT install-nockchain
@@ -72,54 +76,71 @@ function setup_all() {
   source "$RC_FILE"
 
   echo -e "${GREEN}[+] 安装完成 / Setup complete.${RESET}"
+  pause_and_return
 }
 
 # ========= 生成钱包 / Wallet Generation =========
 function generate_wallet() {
   echo -e "[*] 生成钱包 / Generating wallet..."
-  cd nockchain
-
-  if [ ! -f "./target/release/nockchain-wallet" ]; then
+  if [ ! -f "$NCK_DIR/target/release/nockchain-wallet" ]; then
     echo -e "${RED}[-] 错误：找不到 wallet 可执行文件，请确保编译成功。${RESET}"
-    exit 1
+    pause_and_return
+    return
   fi
 
-  ./target/release/nockchain-wallet keygen
+  "$NCK_DIR/target/release/nockchain-wallet" keygen
 
   if [ $? -eq 0 ]; then
     echo -e "${GREEN}[+] 钱包生成成功！/ Wallet generated successfully.${RESET}"
   else
     echo -e "${RED}[-] 钱包生成失败！/ Wallet generation failed!${RESET}"
-    exit 1
   fi
+
+  pause_and_return
 }
 
 # ========= 设置挖矿公钥 / Set Mining Public Key =========
 function configure_mining_key() {
-  cd nockchain
+  if [ ! -f "$NCK_DIR/Makefile" ]; then
+    echo -e "${RED}[-] 找不到 Makefile，无法设置公钥！${RESET}"
+    pause_and_return
+    return
+  fi
+
   read -p "[?] 输入你的挖矿公钥 / Enter your mining public key: " key
-  sed -i "s|^export MINING_PUBKEY :=.*$|export MINING_PUBKEY := $key|" Makefile
+  sed -i "s|^export MINING_PUBKEY :=.*$|export MINING_PUBKEY := $key|" "$NCK_DIR/Makefile"
   echo -e "${GREEN}[+] 挖矿公钥已设置 / Mining key updated.${RESET}"
+
+  pause_and_return
 }
 
 # ========= 启动 Leader 节点 / Run Leader Node =========
 function start_leader_node() {
   echo -e "[*] 启动 Leader 节点 / Starting leader node..."
-  screen -S leader -dm bash -c "cd nockchain && make run-nockchain-leader"
+  screen -S leader -dm bash -c "cd \"$NCK_DIR\" && make run-nockchain-leader"
   echo -e "${GREEN}[+] Leader 节点运行中 / Leader node running.${RESET}"
   echo -e "${YELLOW}[!] 正在进入日志界面，按 Ctrl+A+D 可退出返回主菜单 / Ctrl+A+D to detach.${RESET}"
   sleep 2
   screen -r leader
+  pause_and_return
 }
 
 # ========= 启动 Follower 节点 / Run Follower Node =========
 function start_follower_node() {
   echo -e "[*] 启动 Follower 节点 / Starting follower node..."
-  screen -S follower -dm bash -c "cd nockchain && make run-nockchain-follower"
+  screen -S follower -dm bash -c "cd \"$NCK_DIR\" && make run-nockchain-follower"
   echo -e "${GREEN}[+] Follower 节点运行中 / Follower node running.${RESET}"
   echo -e "${YELLOW}[!] 正在进入日志界面，按 Ctrl+A+D 可退出返回主菜单 / Ctrl+A+D to detach.${RESET}"
   sleep 2
   screen -r follower
+  pause_and_return
+}
+
+# ========= 等待任意键继续 / Pause & Return =========
+function pause_and_return() {
+  echo ""
+  read -n1 -r -p "按任意键返回主菜单 / Press any key to return to menu..." key
+  main_menu
 }
 
 # ========= 主菜单 / Main Menu =========
@@ -142,12 +163,8 @@ function main_menu() {
     4) start_leader_node ;;
     5) start_follower_node ;;
     0) echo "已退出 / Exiting."; exit 0 ;;
-    *) echo -e "${RED}[-] 无效选项 / Invalid option.${RESET}" ;;
+    *) echo -e "${RED}[-] 无效选项 / Invalid option.${RESET}"; pause_and_return ;;
   esac
-
-  echo ""
-  read -p "按任意键返回菜单 / Press any key to return to menu..." -n1
-  main_menu
 }
 
 # ========= 启动主程序 / Entry =========
