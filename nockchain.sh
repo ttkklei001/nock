@@ -23,22 +23,17 @@ function show_banner() {
   echo ""
 }
 
-# ========= 获取核心数量 / Get Core Count =========
-function get_core_count() {
-  # 获取系统中的可用核心数量
-  local max_cores=$(nproc)
-  read -p "请输入你希望使用的核心数量（最大可用核心数为 $max_cores）: " CORE_COUNT
-  if [[ $CORE_COUNT -gt $max_cores || $CORE_COUNT -lt 1 ]]; then
-    echo -e "${RED}[-] 错误：请输入一个有效的核心数量（1 到 $max_cores 之间）。${RESET}"
-    exit 1
+# ========= 提示输入 CPU 核心数 / Prompt for core count =========
+function prompt_core_count() {
+  read -p "[?] 请输入用于编译的 CPU 核心数量 / Enter number of CPU cores for compilation: " CORE_COUNT
+  if ! [[ "$CORE_COUNT" =~ ^[0-9]+$ ]] || [[ "$CORE_COUNT" -lt 1 ]]; then
+    echo -e "${RED}[-] 输入无效，默认使用 1 核心 / Invalid input. Using 1 core.${RESET}"
+    CORE_COUNT=1
   fi
 }
 
 # ========= 一键安装函数 / Full Installation =========
 function setup_all() {
-  # 获取用户输入的核心数量
-  get_core_count
-
   echo -e "[*] 安装系统依赖 / Installing system dependencies..."
   apt-get update && apt install -y sudo
   sudo apt install -y screen curl git wget make gcc build-essential jq \
@@ -50,13 +45,18 @@ function setup_all() {
   source "$HOME/.cargo/env"
   rustup default stable
 
-  echo -e "[*] 克隆最新 nockchain 仓库 / Cloning latest nockchain repository..."
-  rm -rf nockchain
-  git clone --depth=1 https://github.com/zorp-corp/nockchain
+  echo -e "[*] 获取最新仓库 / Cloning or updating latest nockchain repository..."
+  if [ -d "nockchain" ]; then
+    cd nockchain && git pull && cd ..
+  else
+    git clone --depth=1 https://github.com/zorp-corp/nockchain
+  fi
 
-  echo -e "[*] 编译源码 / Building source with $CORE_COUNT 核心..."
+  prompt_core_count
+
+  echo -e "[*] 编译源码 / Building source with ${CORE_COUNT} 核心..."
   cd nockchain
-  make -j$CORE_COUNT install-hoonc
+  make install-hoonc
   make -j$CORE_COUNT build
   make -j$CORE_COUNT install-nockchain-wallet
   make -j$CORE_COUNT install-nockchain
@@ -104,31 +104,21 @@ function configure_mining_key() {
 # ========= 启动 Leader 节点 / Run Leader Node =========
 function start_leader_node() {
   echo -e "[*] 启动 Leader 节点 / Starting leader node..."
-  cd nockchain
-  screen -S leader -dm make run-nockchain-leader
-  echo -e "${GREEN}[+] Leader 节点运行中 / Leader node running (screen: leader).${RESET}"
+  screen -S leader -dm bash -c "cd nockchain && make run-nockchain-leader"
+  echo -e "${GREEN}[+] Leader 节点运行中 / Leader node running.${RESET}"
+  echo -e "${YELLOW}[!] 正在进入日志界面，按 Ctrl+A+D 可退出返回主菜单 / Ctrl+A+D to detach.${RESET}"
+  sleep 2
+  screen -r leader
 }
 
 # ========= 启动 Follower 节点 / Run Follower Node =========
 function start_follower_node() {
   echo -e "[*] 启动 Follower 节点 / Starting follower node..."
-  cd nockchain
-  screen -S follower -dm make run-nockchain-follower
-  echo -e "${GREEN}[+] Follower 节点运行中 / Follower node running (screen: follower).${RESET}"
-}
-
-# ========= 查看 Leader 节点实时日志 =========
-function view_leader_logs() {
-  echo -e "[*] Leader 节点日志 / Viewing leader logs..."
-  screen -r leader
-  echo -e "${YELLOW}[!] 按 Ctrl+A+D 可退出 screen / Ctrl+A+D to detach.${RESET}"
-}
-
-# ========= 查看 Follower 节点实时日志 =========
-function view_follower_logs() {
-  echo -e "[*] Follower 节点日志 / Viewing follower logs..."
+  screen -S follower -dm bash -c "cd nockchain && make run-nockchain-follower"
+  echo -e "${GREEN}[+] Follower 节点运行中 / Follower node running.${RESET}"
+  echo -e "${YELLOW}[!] 正在进入日志界面，按 Ctrl+A+D 可退出返回主菜单 / Ctrl+A+D to detach.${RESET}"
+  sleep 2
   screen -r follower
-  echo -e "${YELLOW}[!] 按 Ctrl+A+D 可退出 screen / Ctrl+A+D to detach.${RESET}"
 }
 
 # ========= 主菜单 / Main Menu =========
@@ -138,10 +128,8 @@ function main_menu() {
   echo "  1) 一键安装并构建 / Install & Build"
   echo "  2) 生成钱包 / Generate Wallet"
   echo "  3) 设置挖矿公钥 / Set Mining Public Key"
-  echo "  4) 启动 Leader 节点 / Start Leader Node"
-  echo "  5) 启动 Follower 节点 / Start Follower Node"
-  echo "  6) 查看 Leader 日志 / View Leader Logs"
-  echo "  7) 查看 Follower 日志 / View Follower Logs"
+  echo "  4) 启动 Leader 节点 / Start Leader Node (实时日志)"
+  echo "  5) 启动 Follower 节点 / Start Follower Node (实时日志)"
   echo "  0) 退出 / Exit"
   echo ""
   read -p "请输入编号 / Enter your choice: " choice
@@ -152,8 +140,6 @@ function main_menu() {
     3) configure_mining_key ;;
     4) start_leader_node ;;
     5) start_follower_node ;;
-    6) view_leader_logs ;;
-    7) view_follower_logs ;;
     0) echo "已退出 / Exiting."; exit 0 ;;
     *) echo -e "${RED}[-] 无效选项 / Invalid option.${RESET}" ;;
   esac
