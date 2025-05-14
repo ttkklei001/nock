@@ -136,6 +136,36 @@ function start_follower_node() {
   pause_and_return
 }
 
+# ========= 查看节点日志 / View Logs =========
+function view_logs() {
+  echo ""
+  echo "查看节点日志 / View screen logs:"
+  echo "  1) Leader 节点"
+  echo "  2) Follower 节点"
+  echo "  0) 返回主菜单 / Return to menu"
+  echo ""
+  read -p "选择查看哪个节点日志 / Choose log to view: " log_choice
+  case "$log_choice" in
+    1)
+      if screen -list | grep -q "leader"; then
+        screen -r leader
+      else
+        echo -e "${RED}[-] Leader 节点未运行 / Leader node not running.${RESET}"
+      fi
+      ;;
+    2)
+      if screen -list | grep -q "follower"; then
+        screen -r follower
+      else
+        echo -e "${RED}[-] Follower 节点未运行 / Follower node not running.${RESET}"
+      fi
+      ;;
+    0) return ;;
+    *) echo -e "${RED}[-] 无效选项 / Invalid option.${RESET}" ;;
+  esac
+  pause_and_return
+}
+
 # ========= 等待任意键继续 / Pause & Return =========
 function pause_and_return() {
   echo ""
@@ -152,6 +182,7 @@ function main_menu() {
   echo "  3) 设置挖矿公钥 / Set Mining Public Key"
   echo "  4) 启动 Leader 节点 / Start Leader Node (实时日志)"
   echo "  5) 启动 Follower 节点 / Start Follower Node (实时日志)"
+  echo "  6) 查看节点日志 / View Node Logs"
   echo "  0) 退出 / Exit"
   echo ""
   read -p "请输入编号 / Enter your choice: " choice
@@ -162,6 +193,7 @@ function main_menu() {
     3) configure_mining_key ;;
     4) start_leader_node ;;
     5) start_follower_node ;;
+    6) view_logs ;;
     0) echo "已退出 / Exiting."; exit 0 ;;
     *) echo -e "${RED}[-] 无效选项 / Invalid option.${RESET}"; pause_and_return ;;
   esac
