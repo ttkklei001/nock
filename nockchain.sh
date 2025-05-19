@@ -88,13 +88,31 @@ function generate_wallet() {
     return
   fi
 
-  "$NCK_DIR/target/release/nockchain-wallet" keygen
+  # 创建临时文件存储输出
+  tmpfile=$(mktemp)
 
-  if [ $? -eq 0 ]; then
+  # 运行钱包生成，实时输出日志并写入临时文件，去除 null 字节
+  "$NCK_DIR/target/release/nockchain-wallet" keygen 2>&1 | tr -d '\0' | tee "$tmpfile"
+
+  if [ ${PIPESTATUS[0]} -eq 0 ]; then
     echo -e "${GREEN}[+] 钱包生成成功！/ Wallet generated successfully.${RESET}"
+
+    # 从临时文件提取信息
+    mnemonic=$(grep "wallet: memo:" "$tmpfile" | head -1 | sed -E 's/^.*wallet: memo: (.*)$/\1/')
+    private_key=$(grep 'private key: base58' "$tmpfile" | head -1 | sed -E 's/^.*private key: base58 "(.*)".*$/\1/')
+    public_key=$(grep 'public key: base58' "$tmpfile" | head -1 | sed -E 's/^.*public key: base58 "(.*)".*$/\1/')
+
+    echo -e "\n${YELLOW}=== 请务必保存以下信息！/ PLEASE SAVE THESE INFO! ===${RESET}"
+    echo -e "${BOLD}助记词 (Mnemonic):${RESET}\n$mnemonic\n"
+    echo -e "${BOLD}私钥 (Private Key):${RESET}\n$private_key\n"
+    echo -e "${BOLD}公钥 (Public Key):${RESET}\n$public_key\n"
+    echo -e "${YELLOW}========================================${RESET}\n"
   else
     echo -e "${RED}[-] 钱包生成失败！/ Wallet generation failed!${RESET}"
   fi
+
+  # 删除临时文件
+  rm -f "$tmpfile"
 
   pause_and_return
 }
