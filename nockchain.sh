@@ -45,7 +45,19 @@ function setup_all() {
 
   echo -e "[*] 安装 Rust / Installing Rust..."
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+  # 加载 rustup 环境变量，使 cargo 命令可用
   source "$HOME/.cargo/env"
+
+  # 将 cargo 路径添加到 shell 配置文件，确保以后都可用
+  RC_FILE="$HOME/.bashrc"
+  [[ "$SHELL" == *"zsh"* ]] && RC_FILE="$HOME/.zshrc"
+
+  # 避免重复写入 PATH 变量
+  if ! grep -q 'export PATH="$HOME/.cargo/bin:$PATH"' "$RC_FILE"; then
+    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$RC_FILE"
+  fi
+
   rustup default stable
 
   echo -e "[*] 获取最新仓库 / Cloning or updating latest nockchain repository..."
@@ -66,15 +78,6 @@ function setup_all() {
   make -j$CORE_COUNT install-nockchain-wallet
   make -j$CORE_COUNT install-nockchain
 
-  echo -e "[*] 配置环境变量 / Setting environment variables..."
-  RC_FILE="$HOME/.bashrc"
-  [[ "$SHELL" == *"zsh"* ]] && RC_FILE="$HOME/.zshrc"
-
-  echo 'export PATH="$PATH:$HOME/nockchain/target/release"' >> "$RC_FILE"
-  echo 'export RUST_LOG=info' >> "$RC_FILE"
-  echo 'export MINIMAL_LOG_FORMAT=true' >> "$RC_FILE"
-  source "$RC_FILE"
-
   echo -e "${GREEN}[+] 安装完成 / Setup complete.${RESET}"
   pause_and_return
 }
@@ -88,16 +91,12 @@ function generate_wallet() {
     return
   fi
 
-  # 创建临时文件存储输出
   tmpfile=$(mktemp)
-
-  # 运行钱包生成，实时输出日志并写入临时文件，去除 null 字节
   "$NCK_DIR/target/release/nockchain-wallet" keygen 2>&1 | tr -d '\0' | tee "$tmpfile"
 
   if [ ${PIPESTATUS[0]} -eq 0 ]; then
     echo -e "${GREEN}[+] 钱包生成成功！/ Wallet generated successfully.${RESET}"
 
-    # 从临时文件提取信息
     mnemonic=$(grep "wallet: memo:" "$tmpfile" | head -1 | sed -E 's/^.*wallet: memo: (.*)$/\1/')
     private_key=$(grep 'private key: base58' "$tmpfile" | head -1 | sed -E 's/^.*private key: base58 "(.*)".*$/\1/')
     public_key=$(grep 'public key: base58' "$tmpfile" | head -1 | sed -E 's/^.*public key: base58 "(.*)".*$/\1/')
@@ -111,9 +110,7 @@ function generate_wallet() {
     echo -e "${RED}[-] 钱包生成失败！/ Wallet generation failed!${RESET}"
   fi
 
-  # 删除临时文件
   rm -f "$tmpfile"
-
   pause_and_return
 }
 
@@ -135,22 +132,40 @@ function configure_mining_key() {
 # ========= 启动 Leader 节点 / Run Leader Node =========
 function start_leader_node() {
   echo -e "[*] 启动 Leader 节点 / Starting leader node..."
-  screen -S leader -dm bash -c "cd \"$NCK_DIR\" && make run-nockchain-leader"
-  echo -e "${GREEN}[+] Leader 节点运行中 / Leader node running.${RESET}"
-  echo -e "${YELLOW}[!] 正在进入日志界面，按 Ctrl+A+D 可退出返回主菜单 / Ctrl+A+D to detach.${RESET}"
+  # 先清理已存在的 leader 会话
+  if screen -list | grep -q "[.]leader"; then
+    screen -S leader -X quit
+    sleep 1
+  fi
+  screen -dmS leader bash -c "cd \"$NCK_DIR\" && make run-nockchain-leader"
   sleep 2
-  screen -r leader
+  if screen -list | grep -q "[.]leader"; then
+    echo -e "${GREEN}[+] Leader 节点运行中 / Leader node running.${RESET}"
+    echo -e "${YELLOW}[!] 正在进入日志界面，按 Ctrl+A+D 可退出返回主菜单 / Ctrl+A+D to detach.${RESET}"
+    screen -r leader
+  else
+    echo -e "${RED}[-] Leader 节点启动失败 / Leader node failed to start.${RESET}"
+  fi
   pause_and_return
 }
 
 # ========= 启动 Follower 节点 / Run Follower Node =========
 function start_follower_node() {
   echo -e "[*] 启动 Follower 节点 / Starting follower node..."
-  screen -S follower -dm bash -c "cd \"$NCK_DIR\" && make run-nockchain-follower"
-  echo -e "${GREEN}[+] Follower 节点运行中 / Follower node running.${RESET}"
-  echo -e "${YELLOW}[!] 正在进入日志界面，按 Ctrl+A+D 可退出返回主菜单 / Ctrl+A+D to detach.${RESET}"
+  # 先清理已存在的 follower 会话
+  if screen -list | grep -q "[.]follower"; then
+    screen -S follower -X quit
+    sleep 1
+  fi
+  screen -dmS follower bash -c "cd \"$NCK_DIR\" && make run-nockchain-follower"
   sleep 2
-  screen -r follower
+  if screen -list | grep -q "[.]follower"; then
+    echo -e "${GREEN}[+] Follower 节点运行中 / Follower node running.${RESET}"
+    echo -e "${YELLOW}[!] 正在进入日志界面，按 Ctrl+A+D 可退出返回主菜单 / Ctrl+A+D to detach.${RESET}"
+    screen -r follower
+  else
+    echo -e "${RED}[-] Follower 节点启动失败 / Follower node failed to start.${RESET}"
+  fi
   pause_and_return
 }
 
@@ -165,14 +180,14 @@ function view_logs() {
   read -p "选择查看哪个节点日志 / Choose log to view: " log_choice
   case "$log_choice" in
     1)
-      if screen -list | grep -q "leader"; then
+      if screen -list | grep -q "[.]leader"; then
         screen -r leader
       else
         echo -e "${RED}[-] Leader 节点未运行 / Leader node not running.${RESET}"
       fi
       ;;
     2)
-      if screen -list | grep -q "follower"; then
+      if screen -list | grep -q "[.]follower"; then
         screen -r follower
       else
         echo -e "${RED}[-] Follower 节点未运行 / Follower node not running.${RESET}"
