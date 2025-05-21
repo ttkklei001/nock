@@ -38,7 +38,7 @@ function prompt_core_count() {
 # ========= 安装和构建 / Setup & Build =========
 function setup_all() {
   echo -e "[*] 安装系统依赖 / Installing system dependencies..."
-  apt-get update && apt install -y sudo
+  sudo apt update && sudo apt install -y sudo
   sudo apt install -y clang llvm-dev libclang-dev curl git make
 
   echo -e "[*] 安装 Rust / Installing Rust..."
@@ -65,10 +65,19 @@ function setup_all() {
   echo -e "[*] 拷贝 .env 文件..."
   cp -n .env_example .env
 
+  # 加载 .env 文件中的环境变量
+  if [ -f ".env" ]; then
+    echo -e "[*] 加载 .env 文件中的环境变量..."
+    set -a
+    source .env
+    set +a
+  fi
+
   prompt_core_count
 
   echo -e "[*] 编译并安装 / Building & installing..."
   make install-hoonc
+  make -j$CORE_COUNT build-hoon-all
   make -j$CORE_COUNT build
   make install-nockchain-wallet
   make install-nockchain
