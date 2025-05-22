@@ -36,14 +36,6 @@ function cd_nck_dir() {
   fi
 }
 
-function prompt_core_count() {
-  read -p "[?] 请输入用于编译的 CPU 核心数量 / Enter number of CPU cores for compilation: " CORE_COUNT
-  if ! [[ "$CORE_COUNT" =~ ^[0-9]+$ ]] || [[ "$CORE_COUNT" -lt 1 ]]; then
-    echo -e "${RED}[-] 输入无效，默认使用 1 核心 / Invalid input. Using 1 core.${RESET}"
-    CORE_COUNT=1
-  fi
-}
-
 function setup_all() {
   echo -e "[*] 安装系统依赖 / Installing system dependencies..."
   sudo apt update && sudo apt install -y sudo
@@ -58,9 +50,16 @@ function setup_all() {
 
   RC_FILE="$HOME/.bashrc"
   [[ "$SHELL" == *"zsh"* ]] && RC_FILE="$HOME/.zshrc"
+
   if ! grep -q 'export PATH="$HOME/.cargo/bin:$PATH"' "$RC_FILE"; then
     echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$RC_FILE"
   fi
+
+  if ! grep -q "export PATH=\"$NCK_DIR/target/release:\$PATH\"" "$RC_FILE"; then
+    echo "export PATH=\"$NCK_DIR/target/release:\$PATH\"" >> "$RC_FILE"
+  fi
+
+  export PATH="$HOME/.cargo/bin:$NCK_DIR/target/release:$PATH"
 
   echo -e "[*] 获取最新仓库 / Cloning or updating nockchain repository..."
   if [ -d "$NCK_DIR" ]; then
@@ -81,12 +80,9 @@ function setup_all() {
     set +a
   fi
 
-  prompt_core_count
-
   echo -e "[*] 编译并安装 / Building & installing..."
   make install-hoonc || { echo -e "${RED}[-] install-hoonc 失败${RESET}"; exit 1; }
-  make -j$CORE_COUNT build-hoon-all || { echo -e "${RED}[-] build-hoon-all 失败${RESET}"; exit 1; }
-  make -j$CORE_COUNT build || { echo -e "${RED}[-] build 失败${RESET}"; exit 1; }
+  make build || { echo -e "${RED}[-] build 失败${RESET}"; exit 1; }
   make install-nockchain-wallet || { echo -e "${RED}[-] install-nockchain-wallet 失败${RESET}"; exit 1; }
   make install-nockchain || { echo -e "${RED}[-] install-nockchain 失败${RESET}"; exit 1; }
 
