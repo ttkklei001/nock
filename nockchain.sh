@@ -133,6 +133,16 @@ function start_node() {
     mining_flag="--mining-pubkey $MINING_PUBKEY --mine"
   fi
 
+  # 固定对等节点参数
+  PEERS="--peer /ip4/95.216.102.60/udp/3006/quic-v1 \
+--peer /ip4/65.108.123.225/udp/3006/quic-v1 \
+--peer /ip4/65.109.156.108/udp/3006/quic-v1 \
+--peer /ip4/65.21.67.175/udp/3006/quic-v1 \
+--peer /ip4/65.109.156.172/udp/3006/quic-v1 \
+--peer /ip4/34.174.22.166/udp/3006/quic-v1 \
+--peer /ip4/34.95.155.151/udp/30000/quic-v1 \
+--peer /ip4/34.18.98.38/udp/30000/quic-v1"
+
   if screen -list | grep -q "[.]nockchain"; then
     echo "[*] 发现已有 screen 会话 nockchain，正在关闭..."
     screen -S nockchain -X quit
@@ -149,7 +159,7 @@ function start_node() {
     fi
   fi
 
-  screen -dmS nockchain bash -c "./target/release/nockchain $mining_flag"
+  screen -dmS nockchain bash -c "./target/release/nockchain $mining_flag $PEERS"
   sleep 2
 
   if screen -list | grep -q "[.]nockchain"; then
