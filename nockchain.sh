@@ -9,7 +9,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 
 # ========= 项目路径 / Project Directory =========
-NCK_DIR="$HOME/nockchain"
+NCK_DIR="/root/nockchain"
+ENV_FILE="$NCK_DIR/.env"
 
 # ========= 横幅与署名 / Banner & Signature =========
 function show_banner() {
@@ -26,7 +27,6 @@ function show_banner() {
   echo ""
 }
 
-# ========= 快速切换目录 =========
 function cd_nck_dir() {
   if [ -d "$NCK_DIR" ]; then
     cd "$NCK_DIR" || exit 1
@@ -36,7 +36,6 @@ function cd_nck_dir() {
   fi
 }
 
-# ========= 提示输入 CPU 核心数 / Prompt for core count =========
 function prompt_core_count() {
   read -p "[?] 请输入用于编译的 CPU 核心数量 / Enter number of CPU cores for compilation: " CORE_COUNT
   if ! [[ "$CORE_COUNT" =~ ^[0-9]+$ ]] || [[ "$CORE_COUNT" -lt 1 ]]; then
@@ -45,7 +44,6 @@ function prompt_core_count() {
   fi
 }
 
-# ========= 安装和构建 / Setup & Build =========
 function setup_all() {
   echo -e "[*] 安装系统依赖 / Installing system dependencies..."
   sudo apt update && sudo apt install -y sudo
@@ -74,96 +72,74 @@ function setup_all() {
   cd_nck_dir
 
   echo -e "[*] 拷贝 .env 文件..."
-  cp -n .env_example .env
+  cp -n .env_example "$ENV_FILE"
 
-  if [ -f ".env" ]; then
+  if [ -f "$ENV_FILE" ]; then
     echo -e "[*] 加载 .env 文件中的环境变量..."
     set -a
-    source .env
+    source "$ENV_FILE"
     set +a
   fi
 
   prompt_core_count
 
   echo -e "[*] 编译并安装 / Building & installing..."
-  make install-hoonc || exit 1
-  make -j$CORE_COUNT build-hoon-all || exit 1
-  make -j$CORE_COUNT build || exit 1
-  make install-nockchain-wallet || exit 1
-  make install-nockchain || exit 1
+  make install-hoonc || { echo -e "${RED}[-] install-hoonc 失败${RESET}"; exit 1; }
+  make -j$CORE_COUNT build-hoon-all || { echo -e "${RED}[-] build-hoon-all 失败${RESET}"; exit 1; }
+  make -j$CORE_COUNT build || { echo -e "${RED}[-] build 失败${RESET}"; exit 1; }
+  make install-nockchain-wallet || { echo -e "${RED}[-] install-nockchain-wallet 失败${RESET}"; exit 1; }
+  make install-nockchain || { echo -e "${RED}[-] install-nockchain 失败${RESET}"; exit 1; }
 
   echo -e "${GREEN}[+] 安装完成 / Setup complete.${RESET}"
   pause_and_return
 }
 
-# ========= 钱包生成 / Wallet Generation =========
 function generate_wallet() {
   echo -e "[*] 生成钱包 / Generating wallet..."
-  if [ ! -f "$NCK_DIR/target/release/nockchain-wallet" ]; then
+  cd_nck_dir
+
+  if [ ! -f "./target/release/nockchain-wallet" ]; then
     echo -e "${RED}[-] 错误：找不到 wallet 可执行文件，请确保编译成功。${RESET}"
     pause_and_return
     return
   fi
 
-  tmpfile=$(mktemp)
-  "$NCK_DIR/target/release/nockchain-wallet" keygen &>/dev/null | tee "$tmpfile"
+  ./target/release/nockchain-wallet keygen
 
-  mnemonic=$(grep "wallet: memo:" "$tmpfile" | sed -E 's/^.*wallet: memo: (.*)$/\1/')
-  private_key=$(grep 'private key: base58' "$tmpfile" | sed -E 's/^.*base58 "(.*)".*$/\1/')
-  public_key=$(grep 'public key: base58' "$tmpfile" | sed -E 's/^.*base58 "(.*)".*$/\1/')
-
-  echo -e "\n${YELLOW}=== 请务必保存以下信息！/ PLEASE SAVE THESE INFO! ===${RESET}"
-  echo -e "${BOLD}助记词 (Mnemonic):${RESET}\n$mnemonic\n"
-  echo -e "${BOLD}私钥 (Private Key):${RESET}\n$private_key\n"
-  echo -e "${BOLD}公钥 (Public Key):${RESET}\n$public_key\n"
-  echo -e "${YELLOW}========================================${RESET}\n"
-
-  if grep -q "^MINING_PUBKEY=" "$NCK_DIR/.env"; then
-    sed -i "s|^MINING_PUBKEY=.*|MINING_PUBKEY=$public_key|" "$NCK_DIR/.env"
-  else
-    echo "MINING_PUBKEY=$public_key" >> "$NCK_DIR/.env"
-  fi
-
-  echo -e "${GREEN}[✔] 挖矿公钥已写入 .env 文件${RESET}"
-  rm -f "$tmpfile"
   pause_and_return
 }
 
-# ========= 设置挖矿公钥 / Set Mining Public Key =========
-function configure_mining_key() {
-  if [ ! -f "$NCK_DIR/.env" ]; then
-    echo -e "${RED}[-] .env 文件不存在，请先运行安装 / .env file not found, please run install first.${RESET}"
-    pause_and_return
-    return
-  fi
-
-  read -p "[?] 输入你的挖矿公钥 / Enter your mining public key: " key
-  grep -q "^MINING_PUBKEY=" "$NCK_DIR/.env" \
-    && sed -i "s|^MINING_PUBKEY=.*|MINING_PUBKEY=$key|" "$NCK_DIR/.env" \
-    || echo "MINING_PUBKEY=$key" >> "$NCK_DIR/.env"
-
-  echo -e "${GREEN}[+] 挖矿公钥已更新 / Mining key updated.${RESET}"
-  pause_and_return
-}
-
-# ========= 启动节点 / Run Node in screen =========
 function start_node() {
   echo -e "[*] 启动 Nockchain 节点 (screen 会话名: nockchain) / Starting Nockchain node in screen session..."
   cd_nck_dir
 
-  if screen -list | grep -q "nockchain"; then
-    screen -S nockchain -X quit
-    sleep 1
+  read -p "[?] 请输入挖矿公钥 (留空则不挖矿) / Enter mining public key (leave empty to run without mining): " MINING_PUBKEY
+
+  mining_flag=""
+  if [ -n "$MINING_PUBKEY" ]; then
+    mining_flag="--mining_pubkey $MINING_PUBKEY --mine"
   fi
 
-  source .env
-  mining_flag=""
-  [ -n "$MINING_PUBKEY" ] && mining_flag="--mining_pubkey $MINING_PUBKEY --mine"
+  if screen -list | grep -q "[.]nockchain"; then
+    echo "[*] 发现已有 screen 会话 nockchain，正在关闭..."
+    screen -S nockchain -X quit
+    for i in {1..5}; do
+      if ! screen -list | grep -q "[.]nockchain"; then
+        break
+      fi
+      sleep 1
+    done
+    if screen -list | grep -q "[.]nockchain"; then
+      echo -e "${RED}[-] 无法关闭已有的 nockchain 会话，请手动关闭后重试${RESET}"
+      pause_and_return
+      return
+    fi
+  fi
 
   screen -dmS nockchain bash -c "./target/release/nockchain $mining_flag"
   sleep 2
 
-  if screen -list | grep -q "nockchain"; then
+  if screen -list | grep -q "[.]nockchain"; then
     echo -e "${GREEN}[+] 节点启动成功，screen 会话名: nockchain${RESET}"
   else
     echo -e "${RED}[-] 节点启动失败${RESET}"
@@ -171,33 +147,31 @@ function start_node() {
   pause_and_return
 }
 
-# ========= 查看节点日志 / View Node Logs =========
 function view_logs() {
-  if screen -list | grep -q "nockchain"; then
+  if screen -list | grep -q "[.]nockchain"; then
     echo -e "${YELLOW}[!] 进入 screen 会话，按 Ctrl+A+D 退出日志界面 / Press Ctrl+A+D to detach.${RESET}"
     screen -r nockchain
   else
     echo -e "${RED}[-] 节点未运行，无法查看日志${RESET}"
     pause_and_return
+    return
   fi
+  pause_and_return
 }
 
-# ========= 等待按键继续 / Pause & Return =========
 function pause_and_return() {
   echo ""
   read -n1 -r -p "按任意键返回主菜单 / Press any key to return to menu..." key
   main_menu
 }
 
-# ========= 主菜单 / Main Menu =========
 function main_menu() {
   show_banner
   echo "请选择操作 / Please choose an option:"
   echo "  1) 一键安装并构建 / Install & Build"
   echo "  2) 生成钱包 / Generate Wallet"
-  echo "  3) 设置挖矿公钥 / Set Mining Public Key"
-  echo "  4) 启动节点 (screen 后台) / Start Node (screen background)"
-  echo "  5) 查看节点日志 / View Node Logs"
+  echo "  3) 启动节点 (screen 后台) / Start Node (screen background)"
+  echo "  4) 查看节点日志 / View Node Logs"
   echo "  0) 退出 / Exit"
   echo ""
   read -p "请输入编号 / Enter your choice: " choice
@@ -205,13 +179,11 @@ function main_menu() {
   case "$choice" in
     1) setup_all ;;
     2) generate_wallet ;;
-    3) configure_mining_key ;;
-    4) start_node ;;
-    5) view_logs ;;
+    3) start_node ;;
+    4) view_logs ;;
     0) echo "已退出 / Exiting."; exit 0 ;;
     *) echo -e "${RED}[-] 无效选项 / Invalid option.${RESET}"; pause_and_return ;;
   esac
 }
 
-# ========= 启动主程序 / Entry =========
 main_menu
