@@ -130,7 +130,7 @@ function start_node() {
 
   mining_flag=""
   if [ -n "$MINING_PUBKEY" ]; then
-    mining_flag="--mining_pubkey $MINING_PUBKEY --mine"
+    mining_flag="--mining-pubkey $MINING_PUBKEY --mine"
   fi
 
   if screen -list | grep -q "[.]nockchain"; then
