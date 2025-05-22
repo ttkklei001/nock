@@ -39,7 +39,19 @@ function cd_nck_dir() {
 function setup_all() {
   echo -e "[*] 安装系统依赖 / Installing system dependencies..."
   sudo apt update && sudo apt install -y sudo
-  sudo apt install -y clang llvm-dev libclang-dev curl git make
+
+  sudo apt install -y \
+    clang \
+    llvm-dev \
+    libclang-dev \
+    pkg-config \
+    libssl-dev \
+    build-essential \
+    cmake \
+    curl \
+    git \
+    make \
+    screen
 
   echo -e "[*] 安装 Rust / Installing Rust..."
   if ! command -v cargo &>/dev/null; then
@@ -50,16 +62,9 @@ function setup_all() {
 
   RC_FILE="$HOME/.bashrc"
   [[ "$SHELL" == *"zsh"* ]] && RC_FILE="$HOME/.zshrc"
-
   if ! grep -q 'export PATH="$HOME/.cargo/bin:$PATH"' "$RC_FILE"; then
     echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$RC_FILE"
   fi
-
-  if ! grep -q "export PATH=\"$NCK_DIR/target/release:\$PATH\"" "$RC_FILE"; then
-    echo "export PATH=\"$NCK_DIR/target/release:\$PATH\"" >> "$RC_FILE"
-  fi
-
-  export PATH="$HOME/.cargo/bin:$NCK_DIR/target/release:$PATH"
 
   echo -e "[*] 获取最新仓库 / Cloning or updating nockchain repository..."
   if [ -d "$NCK_DIR" ]; then
@@ -82,6 +87,7 @@ function setup_all() {
 
   echo -e "[*] 编译并安装 / Building & installing..."
   make install-hoonc || { echo -e "${RED}[-] install-hoonc 失败${RESET}"; exit 1; }
+
   make build || { echo -e "${RED}[-] build 失败${RESET}"; exit 1; }
   make install-nockchain-wallet || { echo -e "${RED}[-] install-nockchain-wallet 失败${RESET}"; exit 1; }
   make install-nockchain || { echo -e "${RED}[-] install-nockchain 失败${RESET}"; exit 1; }
