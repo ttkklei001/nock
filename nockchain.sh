@@ -38,8 +38,7 @@ function cd_nck_dir() {
 
 function setup_all() {
   echo -e "[*] 安装系统依赖 / Installing system dependencies..."
-  sudo apt update && sudo apt install -y sudo
-
+  sudo apt update
   sudo apt install -y \
     clang \
     llvm-dev \
@@ -56,8 +55,8 @@ function setup_all() {
   echo -e "[*] 安装 Rust / Installing Rust..."
   if ! command -v cargo &>/dev/null; then
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    # 立即生效环境变量
     source "$HOME/.cargo/env"
-    echo -e "${YELLOW}[!] Rust 安装完成，请重新打开终端或执行：source ~/.bashrc${RESET}"
   fi
 
   RC_FILE="$HOME/.bashrc"
@@ -89,7 +88,9 @@ function setup_all() {
   make install-hoonc || { echo -e "${RED}[-] install-hoonc 失败${RESET}"; exit 1; }
 
   make build || { echo -e "${RED}[-] build 失败${RESET}"; exit 1; }
+
   make install-nockchain-wallet || { echo -e "${RED}[-] install-nockchain-wallet 失败${RESET}"; exit 1; }
+
   make install-nockchain || { echo -e "${RED}[-] install-nockchain 失败${RESET}"; exit 1; }
 
   echo -e "${GREEN}[+] 安装完成 / Setup complete.${RESET}"
@@ -107,6 +108,21 @@ function generate_wallet() {
   fi
 
   ./target/release/nockchain-wallet keygen
+
+  pause_and_return
+}
+
+function update_wallet_balance() {
+  echo -e "[*] 更新钱包余额 / Updating wallet balance..."
+  cd_nck_dir
+
+  if [ ! -f "./target/release/nockchain-wallet" ]; then
+    echo -e "${RED}[-] 错误：找不到 wallet 可执行文件，请确保编译成功。${RESET}"
+    pause_and_return
+    return
+  fi
+
+  ./target/release/nockchain-wallet update-balance
 
   pause_and_return
 }
@@ -172,8 +188,9 @@ function main_menu() {
   echo "请选择操作 / Please choose an option:"
   echo "  1) 一键安装并构建 / Install & Build"
   echo "  2) 生成钱包 / Generate Wallet"
-  echo "  3) 启动节点 (screen 后台) / Start Node (screen background)"
-  echo "  4) 查看节点日志 / View Node Logs"
+  echo "  3) 更新钱包余额 / Update Wallet Balance"
+  echo "  4) 启动节点 (screen 后台) / Start Node (screen background)"
+  echo "  5) 查看节点日志 / View Node Logs"
   echo "  0) 退出 / Exit"
   echo ""
   read -p "请输入编号 / Enter your choice: " choice
@@ -181,8 +198,9 @@ function main_menu() {
   case "$choice" in
     1) setup_all ;;
     2) generate_wallet ;;
-    3) start_node ;;
-    4) view_logs ;;
+    3) update_wallet_balance ;;
+    4) start_node ;;
+    5) view_logs ;;
     0) echo "已退出 / Exiting."; exit 0 ;;
     *) echo -e "${RED}[-] 无效选项 / Invalid option.${RESET}"; pause_and_return ;;
   esac
