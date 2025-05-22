@@ -26,6 +26,16 @@ function show_banner() {
   echo ""
 }
 
+# ========= 快速切换目录 =========
+function cd_nck_dir() {
+  if [ -d "$NCK_DIR" ]; then
+    cd "$NCK_DIR" || exit 1
+  else
+    echo -e "${RED}[-] 错误：项目目录不存在：$NCK_DIR${RESET}"
+    exit 1
+  fi
+}
+
 # ========= 提示输入 CPU 核心数 / Prompt for core count =========
 function prompt_core_count() {
   read -p "[?] 请输入用于编译的 CPU 核心数量 / Enter number of CPU cores for compilation: " CORE_COUNT
@@ -45,6 +55,7 @@ function setup_all() {
   if ! command -v cargo &>/dev/null; then
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     source "$HOME/.cargo/env"
+    echo -e "${YELLOW}[!] Rust 安装完成，请重新打开终端或执行：source ~/.bashrc${RESET}"
   fi
 
   RC_FILE="$HOME/.bashrc"
@@ -60,12 +71,11 @@ function setup_all() {
     git clone --depth=1 https://github.com/zorp-corp/nockchain "$NCK_DIR"
   fi
 
-  cd "$NCK_DIR" || exit 1
+  cd_nck_dir
 
   echo -e "[*] 拷贝 .env 文件..."
   cp -n .env_example .env
 
-  # 加载 .env 文件中的环境变量
   if [ -f ".env" ]; then
     echo -e "[*] 加载 .env 文件中的环境变量..."
     set -a
@@ -76,11 +86,11 @@ function setup_all() {
   prompt_core_count
 
   echo -e "[*] 编译并安装 / Building & installing..."
-  make install-hoonc
-  make -j$CORE_COUNT build-hoon-all
-  make -j$CORE_COUNT build
-  make install-nockchain-wallet
-  make install-nockchain
+  make install-hoonc || exit 1
+  make -j$CORE_COUNT build-hoon-all || exit 1
+  make -j$CORE_COUNT build || exit 1
+  make install-nockchain-wallet || exit 1
+  make install-nockchain || exit 1
 
   echo -e "${GREEN}[+] 安装完成 / Setup complete.${RESET}"
   pause_and_return
@@ -96,7 +106,7 @@ function generate_wallet() {
   fi
 
   tmpfile=$(mktemp)
-  "$NCK_DIR/target/release/nockchain-wallet" keygen 2>&1 | tee "$tmpfile"
+  "$NCK_DIR/target/release/nockchain-wallet" keygen &>/dev/null | tee "$tmpfile"
 
   mnemonic=$(grep "wallet: memo:" "$tmpfile" | sed -E 's/^.*wallet: memo: (.*)$/\1/')
   private_key=$(grep 'private key: base58' "$tmpfile" | sed -E 's/^.*base58 "(.*)".*$/\1/')
@@ -108,10 +118,13 @@ function generate_wallet() {
   echo -e "${BOLD}公钥 (Public Key):${RESET}\n$public_key\n"
   echo -e "${YELLOW}========================================${RESET}\n"
 
-  # 写入 .env 文件
-  sed -i "s/^MINING_PUBKEY=.*/MINING_PUBKEY=$public_key/" "$NCK_DIR/.env"
-  echo -e "${GREEN}[✔] 挖矿公钥已写入 .env 文件${RESET}"
+  if grep -q "^MINING_PUBKEY=" "$NCK_DIR/.env"; then
+    sed -i "s|^MINING_PUBKEY=.*|MINING_PUBKEY=$public_key|" "$NCK_DIR/.env"
+  else
+    echo "MINING_PUBKEY=$public_key" >> "$NCK_DIR/.env"
+  fi
 
+  echo -e "${GREEN}[✔] 挖矿公钥已写入 .env 文件${RESET}"
   rm -f "$tmpfile"
   pause_and_return
 }
@@ -125,27 +138,31 @@ function configure_mining_key() {
   fi
 
   read -p "[?] 输入你的挖矿公钥 / Enter your mining public key: " key
-  if grep -q "^MINING_PUBKEY=" "$NCK_DIR/.env"; then
-    sed -i "s|^MINING_PUBKEY=.*$|MINING_PUBKEY=$key|" "$NCK_DIR/.env"
-  else
-    echo "MINING_PUBKEY=$key" >> "$NCK_DIR/.env"
-  fi
-  echo -e "${GREEN}[+] 挖矿公钥已更新 / Mining key updated.${RESET}"
+  grep -q "^MINING_PUBKEY=" "$NCK_DIR/.env" \
+    && sed -i "s|^MINING_PUBKEY=.*|MINING_PUBKEY=$key|" "$NCK_DIR/.env" \
+    || echo "MINING_PUBKEY=$key" >> "$NCK_DIR/.env"
 
+  echo -e "${GREEN}[+] 挖矿公钥已更新 / Mining key updated.${RESET}"
   pause_and_return
 }
 
 # ========= 启动节点 / Run Node in screen =========
 function start_node() {
   echo -e "[*] 启动 Nockchain 节点 (screen 会话名: nockchain) / Starting Nockchain node in screen session..."
-  cd "$NCK_DIR" || exit 1
-  # 关闭已有会话
+  cd_nck_dir
+
   if screen -list | grep -q "nockchain"; then
     screen -S nockchain -X quit
     sleep 1
   fi
-  screen -dmS nockchain bash -c "make run-nockchain"
+
+  source .env
+  mining_flag=""
+  [ -n "$MINING_PUBKEY" ] && mining_flag="--mining_pubkey $MINING_PUBKEY --mine"
+
+  screen -dmS nockchain bash -c "./target/release/nockchain $mining_flag"
   sleep 2
+
   if screen -list | grep -q "nockchain"; then
     echo -e "${GREEN}[+] 节点启动成功，screen 会话名: nockchain${RESET}"
   else
