@@ -9,7 +9,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 
 # ========= 项目路径 / Project Directory =========
-NCK_DIR="/root/nockchain"
+NCK_DIR="$HOME/nockchain"
 ENV_FILE="$NCK_DIR/.env"
 
 # ========= 横幅与署名 / Banner & Signature =========
@@ -55,7 +55,6 @@ function setup_all() {
   echo -e "[*] 安装 Rust / Installing Rust..."
   if ! command -v cargo &>/dev/null; then
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    # 立即生效环境变量
     source "$HOME/.cargo/env"
   fi
 
@@ -64,6 +63,7 @@ function setup_all() {
   if ! grep -q 'export PATH="$HOME/.cargo/bin:$PATH"' "$RC_FILE"; then
     echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$RC_FILE"
   fi
+  export PATH="$HOME/.cargo/bin:$PATH"
 
   echo -e "[*] 获取最新仓库 / Cloning or updating nockchain repository..."
   if [ -d "$NCK_DIR" ]; then
@@ -86,11 +86,8 @@ function setup_all() {
 
   echo -e "[*] 编译并安装 / Building & installing..."
   make install-hoonc || { echo -e "${RED}[-] install-hoonc 失败${RESET}"; exit 1; }
-
   make build || { echo -e "${RED}[-] build 失败${RESET}"; exit 1; }
-
   make install-nockchain-wallet || { echo -e "${RED}[-] install-nockchain-wallet 失败${RESET}"; exit 1; }
-
   make install-nockchain || { echo -e "${RED}[-] install-nockchain 失败${RESET}"; exit 1; }
 
   echo -e "${GREEN}[+] 安装完成 / Setup complete.${RESET}"
@@ -108,7 +105,6 @@ function generate_wallet() {
   fi
 
   ./target/release/nockchain-wallet keygen
-
   pause_and_return
 }
 
@@ -123,7 +119,6 @@ function update_wallet_balance() {
   fi
 
   ./target/release/nockchain-wallet update-balance
-
   pause_and_return
 }
 
